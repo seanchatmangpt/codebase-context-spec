@@ -161,11 +161,10 @@ export class ContextignoreLinter {
    */
   public isIgnored(filePath: string, relativeTo: string): boolean {
     try {
-      const directoryPath = path.dirname(filePath);
-      let currentDir = directoryPath;
+      let currentDir = path.dirname(filePath);
 
       // Traverse up the directory tree to find the nearest .contextignore file
-      while (currentDir.length >= relativeTo.length) {
+      do {
         const ig = this.ignoreCache.get(currentDir);
         if (ig) {
           const relativeFilePath = path.relative(currentDir, filePath);
@@ -174,7 +173,7 @@ export class ContextignoreLinter {
           return ignored;
         }
         currentDir = path.dirname(currentDir);
-      }
+      } while (currentDir.length >= relativeTo.length && currentDir !== path.dirname(currentDir));
 
       this.log(LogLevel.DEBUG, `File ${filePath} is not ignored (no .contextignore found)`);
       return false;
@@ -221,6 +220,42 @@ export class ContextignoreLinter {
       return ignoredFiles;
     } catch (error) {
       this.log(LogLevel.ERROR, `Error getting ignored files for directory ${directoryPath}: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get a list of ignored directories in a directory
+   * @param directoryPath The path of the directory to check
+   * @returns An array of ignored directory paths
+   */
+  public getIgnoredDirectories(directoryPath: string): string[] {
+    try {
+      const ig = this.ignoreCache.get(directoryPath);
+      if (!ig) {
+        return [];
+      }
+
+      const ignoredDirectories: string[] = [];
+      const walk = (dir: string) => {
+        const dirents = fs.readdirSync(dir, { withFileTypes: true });
+        for (const dirent of dirents) {
+          if (dirent.isDirectory()) {
+            const res = path.join(dir, dirent.name);
+            const relativePath = path.relative(directoryPath, res);
+            if (ig.ignores(relativePath)) {
+              ignoredDirectories.push(res);
+            } else {
+              walk(res);
+            }
+          }
+        }
+      };
+
+      walk(directoryPath);
+      return ignoredDirectories;
+    } catch (error) {
+      this.log(LogLevel.ERROR, `Error getting ignored directories for directory ${directoryPath}: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }
